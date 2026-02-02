@@ -23,7 +23,7 @@ A GenAI-powered agent that helps users understand and dispute financial transact
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone [<repository-url>](https://github.com/bassamejaz/dispute-agent.git)
 cd glia-agent-v2
 
 # Install dependencies
