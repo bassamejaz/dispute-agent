@@ -3,7 +3,7 @@
 from typing import Literal
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import PIIMiddleware
+from langchain.agents.middleware import PIIMiddleware, SummarizationMiddleware
 
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -97,7 +97,15 @@ class DisputeAgent:
             tools=self.tools,
             system_prompt=get_system_prompt(settings.prompt_config.response_tone, settings.prompt_config.show_reasoning),
             middleware=[
-                PIIMiddleware("email", strategy="redact", apply_to_input=False, apply_to_tool_results=True),
+                SummarizationMiddleware(
+                    self.llm, 
+                    trigger=("tokens", 4000),
+                    keep=("messages", 20)),
+                PIIMiddleware(
+                    "email", 
+                    strategy="redact", 
+                    apply_to_input=False, 
+                    apply_to_tool_results=True),
                 PIIMiddleware(
                     "credit_card",
                     strategy="redact",
