@@ -18,6 +18,7 @@ This document explains the technical decisions made while building the Transacti
 10. [Resilience: Why Retry + Rate Limiting + Circuit Breaker?](#10-resilience-why-retry--rate-limiting--circuit-breaker)
 11. [Mock Data: Why 30 Curated Transactions?](#11-mock-data-why-30-curated-transactions)
 12. [Tool Design: Why Separate Tools Instead of One Generic Tool?](#12-tool-design-why-separate-tools-instead-of-one-generic-tool)
+13. [Future Improvements](#future-improvements)
 
 ---
 
@@ -81,6 +82,8 @@ The main caveat with LangChain v1 is its newness. There are fewer Stack Overflow
 
 I implemented PII masking at two points:
 1. **Before sending to agent**: Custom `mask_pii()` function in `src/utils/pii.py`
+This function uses a hybrid approach: it applies regex-based masking first, followed by Microsoft Presidio masking. The final output is the fully redacted text.
+
 2. **Inside agent**: LangChain's `PIIMiddleware` for tool outputs
 
 ### Why Not Just Middleware?
@@ -585,3 +588,111 @@ More tools to maintain and document. But the security and clarity benefits outwe
 | Separate tools | Security, validation, clear semantics |
 
 Each decision balances demo simplicity with production thinking, demonstrating awareness of real-world requirements while keeping implementation manageable.
+
+---
+
+## Future Improvements
+
+The following enhancements would improve the system for production readiness:
+
+### 1. Fuzzy Matching for Merchant Names
+
+Currently, merchant matching relies on exact substring matching against names and aliases. This can fail when:
+- User says "Starbux" but the merchant is "Starbucks"
+- User says "Amazon Prime" but the alias is "AMZN MKTP"
+
+**Improvement**: Implement fuzzy string matching (e.g., Levenshtein distance, Jaro-Winkler similarity) for merchant name lookups. This would allow queries like "Starbux" to match "Starbucks" with a configurable similarity threshold.
+
+### 2. Cleaner Tool Output for User-Facing Responses
+
+The current tool responses include internal details that are not meaningful to end users:
+
+```
+**Merchant Overview – Netflix**
+
+| Attribute | Details |
+|-----------|---------|
+| **Merchant ID** | `merch_003` |
+| **Name** | Netflix |
+| **Category** | Subscription – streaming entertainment |
+```
+
+**Improvement**: Create separate response formatters that filter out internal fields (like `merchant_id`, `transaction_id`) when presenting information to users. The LLM should receive clean, user-friendly data that it can relay directly.
+
+### 3. FastAPI Setup with Authentication
+
+The current CLI interface is suitable for demos but not for production deployment.
+
+**Improvement**: Add a FastAPI-based REST API with:
+- JWT or OAuth2 authentication
+- WebSocket support for streaming responses
+- Rate limiting per user/API key
+- Health check and metrics endpoints
+- OpenAPI documentation
+
+### 4. Custom PII Detection in Middleware
+
+Currently, the middleware uses LangChain's built-in PII detection. For financial applications, we may need domain-specific detection.
+
+**Improvement**: Replace or augment the middleware with custom Presidio-based detection that can identify:
+- Account numbers in specific formats
+- Internal reference numbers
+- Domain-specific identifiers
+
+This would use the same `detect_all_pii()` function already implemented in `src/utils/pii.py`.
+
+### 5. Add More Middlewares To Improve Agent Robustness
+
+As the agent grows in complexity, failures can occur due to excessive tool calls, transient model errors, or suboptimal tool selection.
+
+Improvement: Introduce additional middlewares to better control and harden the agent. These would:
+- Tool call limit: Control tool execution by limiting the number of tool calls per request
+- Model fallback: Automatically switch to alternative models when the primary model fails
+- LLM-based tool selector: Use a lightweight LLM to pre-select relevant tools before invoking the main model
+- Tool retry: Automatically retry failed tool calls using exponential backoff
+- Model retry: Automatically retry failed model calls using exponential backoff
+
+This layered middleware approach increases reliability, prevents runaway execution, and improves overall agent robustness.
+
+### 6. Streaming Responses
+
+Currently, the agent returns complete responses after processing. For complex queries with multiple tool calls, this can feel slow.
+
+**Improvement**: Implement streaming responses so users see partial output as the agent reasons and acts. LangChain supports streaming out of the box with `stream()` instead of `invoke()`.
+
+### 7. Multi-Language Support
+
+The current system only supports English queries and responses.
+
+**Improvement**: Add i18n support for:
+- System prompts in multiple languages
+- Date/currency formatting based on locale
+- PII detection patterns for different regions (e.g., IBAN for Europe, different SSN formats)
+
+### 8. Analytics and Feedback Loop
+
+Currently, there's no mechanism to learn from user interactions.
+
+**Improvement**: Add:
+- Query success/failure tracking
+- "Was this helpful?" feedback collection
+- Analytics on common query patterns to improve fuzzy matching thresholds
+- A/B testing framework for prompt variations
+
+### 9. Caching Layer
+
+Repeated queries for the same transaction or merchant result in redundant processing.
+
+**Improvement**: Add a caching layer for:
+- Merchant lookups (merchants rarely change)
+- Recent transaction queries (with short TTL)
+- LLM responses for identical queries (with appropriate invalidation)
+
+### 10. Proper Error Messages for Users
+
+Currently, errors are logged but user-facing messages are generic.
+
+**Improvement**: Create a structured error handling system that:
+- Maps internal errors to user-friendly messages
+- Provides actionable suggestions (e.g., "Try searching by amount instead")
+- Maintains security by not exposing internal details

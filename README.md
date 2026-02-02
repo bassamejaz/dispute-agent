@@ -146,6 +146,13 @@ The agent includes 30 mock transactions covering various scenarios:
 - International transactions (EUR, GBP)
 - Refunds and pending transactions
 
+To seed data:
+
+```bash
+uv run python main.py --seed
+```
+
+
 To reset data to defaults:
 
 ```bash
